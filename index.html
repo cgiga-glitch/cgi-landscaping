@@ -239,6 +239,22 @@ const SHEET_URL = 'https://script.google.com/macros/s/AKfycbxOxLHPt_xsEw_HcAW1Wz
 let sharedCounts = {}; // { 'loc_0': { 'lawn_mowing': 12, ... }, ... }
 
 async function fetchCounts() {
+  try {
+    const res = await fetch(SHEET_URL + '?action=counts', {
+      method: 'GET',
+      mode: 'cors',
+    });
+    const data = await res.json();
+    sharedCounts = (data && data.counts) ? data.counts : {};
+  } catch {
+    // JSONP fallback for browsers blocking cors
+    await fetchCountsJSONP();
+    return;
+  }
+  renderCountDashboard();
+}
+
+function fetchCountsJSONP() {
   return new Promise((resolve) => {
     const cbName = '_cb_' + Date.now();
     const script = document.createElement('script');
