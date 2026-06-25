@@ -177,12 +177,6 @@
     <div class="count-grid" id="countGrid"></div>
   </div>
 
-  <!-- History -->
-  <div class="history-section">
-    <div class="section-label">오늘의 기록</div>
-    <div class="history-list" id="historyList"></div>
-  </div>
-
 </div>
 </div>
 
@@ -239,21 +233,26 @@ const LOCATION_TASKS = [
 // STATE
 // ───────────────────────────────────────────
 let currentLoc = 0;
-let sessionLogs = [];
 
 // ── Shared counts from Google Sheets ──
 const SHEET_URL = 'https://script.google.com/macros/s/AKfycby-v2dgvT08WQX-rj2h1n_a4EOnGckvgJmDcyO5A8MrDjh4BIsKLUy7BTHhR4PvvxDj5Q/exec';
 let sharedCounts = {}; // { 'loc_0': { 'lawn_mowing': 12, ... }, ... }
 
 async function fetchCounts() {
-  try {
-    const res = await fetch(SHEET_URL + '?action=counts', { cache: 'no-store' });
-    const data = await res.json();
-    sharedCounts = data.counts || {};
-  } catch {
-    sharedCounts = {};
-  }
-  renderCountDashboard();
+  return new Promise((resolve) => {
+    const cbName = '_cb_' + Date.now();
+    const script = document.createElement('script');
+    window[cbName] = function(data) {
+      sharedCounts = (data && data.counts) ? data.counts : {};
+      renderCountDashboard();
+      delete window[cbName];
+      script.remove();
+      resolve();
+    };
+    script.src = SHEET_URL + '?action=counts&callback=' + cbName;
+    script.onerror = () => { sharedCounts = {}; renderCountDashboard(); resolve(); };
+    document.head.appendChild(script);
+  });
 }
 
 function getCount(locIdx, taskId) {
@@ -266,9 +265,8 @@ function getCount(locIdx, taskId) {
 document.addEventListener('DOMContentLoaded', () => {
   updateDateDisplay();
   renderTasks();
-  renderCountDashboard(); // show 0s immediately
-  fetchCounts();          // then load real numbers
-  renderHistory();
+  renderCountDashboard();
+  fetchCounts();
 });
 
 function updateDateDisplay() {
@@ -399,37 +397,10 @@ async function submitLog() {
   // Refresh shared counts
   await fetchCounts();
 
-  const tasksWithType = checked.map(c => ({ name:c.dataset.task, type:c.dataset.type }));
-  sessionLogs.unshift({ ...payload, tasksWithType });
-  renderHistory();
-
   // Reset
   document.querySelectorAll('.task-card').forEach(c => c.classList.remove('checked'));
   document.getElementById('noteInput').value = '';
   btn.disabled = false; label.textContent = '작업 완료 기록';
-}
-
-// ───────────────────────────────────────────
-// HISTORY
-// ───────────────────────────────────────────
-function renderHistory() {
-  const list = document.getElementById('historyList');
-  if (!sessionLogs.length) {
-    list.innerHTML = '<div class="no-checks">아직 기록된 작업이 없습니다</div>'; return;
-  }
-  list.innerHTML = sessionLogs.map(log => `
-    <div class="history-item">
-      <div class="history-item-header">
-        <span class="history-loc">${log.location}</span>
-        <span class="history-time">${log.timestamp}</span>
-      </div>
-      <div class="history-tasks">
-        ${log.tasksWithType.map(t =>
-          `<span class="history-tag ${t.type==='seasonal'?'seasonal':''}">${t.name}</span>`
-        ).join('')}
-      </div>
-      ${log.note ? `<div class="history-note">📝 ${log.note}</div>` : ''}
-    </div>`).join('');
 }
 
 // ───────────────────────────────────────────
