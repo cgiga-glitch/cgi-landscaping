@@ -241,22 +241,23 @@ const LOCATION_TASKS = [
 let currentLoc = 0;
 let sessionLogs = [];
 
-// counts stored as: counts[locKey][taskId] = number
-// locKey: 'loc_0', 'loc_1', 'loc_2'
-function getCounts() {
-  try { return JSON.parse(localStorage.getItem('cgi_counts') || '{}'); } catch { return {}; }
+// ── Shared counts from Google Sheets ──
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycby-v2dgvT08WQX-rj2h1n_a4EOnGckvgJmDcyO5A8MrDjh4BIsKLUy7BTHhR4PvvxDj5Q/exec';
+let sharedCounts = {}; // { 'loc_0': { 'lawn_mowing': 12, ... }, ... }
+
+async function fetchCounts() {
+  try {
+    const res = await fetch(SHEET_URL + '?action=counts', { cache: 'no-store' });
+    const data = await res.json();
+    sharedCounts = data.counts || {};
+  } catch {
+    sharedCounts = {};
+  }
+  renderCountDashboard();
 }
-function saveCounts(c) { localStorage.setItem('cgi_counts', JSON.stringify(c)); }
-function incrementCount(locIdx, taskId) {
-  const c = getCounts();
-  const k = `loc_${locIdx}`;
-  if (!c[k]) c[k] = {};
-  c[k][taskId] = (c[k][taskId] || 0) + 1;
-  saveCounts(c);
-}
+
 function getCount(locIdx, taskId) {
-  const c = getCounts();
-  return (c[`loc_${locIdx}`] || {})[taskId] || 0;
+  return (sharedCounts[`loc_${locIdx}`] || {})[taskId] || 0;
 }
 
 // ───────────────────────────────────────────
@@ -265,7 +266,8 @@ function getCount(locIdx, taskId) {
 document.addEventListener('DOMContentLoaded', () => {
   updateDateDisplay();
   renderTasks();
-  renderCountDashboard();
+  renderCountDashboard(); // show 0s immediately
+  fetchCounts();          // then load real numbers
   renderHistory();
 });
 
@@ -289,6 +291,7 @@ function switchLocation(idx) {
   document.getElementById('noteInput').value = '';
   renderTasks();
   renderCountDashboard();
+  fetchCounts();
 }
 
 // ───────────────────────────────────────────
@@ -383,20 +386,21 @@ async function submitLog() {
     submittedBy:    '',
   };
 
-  // Increment counters
-  checked.forEach(c => incrementCount(currentLoc, c.dataset.id));
+  // Increment counts via Sheets
+  const taskIds = checked.map(c => ({ locIdx: currentLoc, taskId: c.dataset.id }));
 
-  const SHEET_URL = 'https://script.google.com/macros/s/AKfycby-v2dgvT08WQX-rj2h1n_a4EOnGckvgJmDcyO5A8MrDjh4BIsKLUy7BTHhR4PvvxDj5Q/exec';
   try {
     await fetch(SHEET_URL, { method:'POST', mode:'no-cors', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-    showToast('✅ Google Sheets에 기록되었습니다!','success');
+    showToast('입력 완료!', 'success');
   } catch {
-    showToast('⚠️ 전송 실패 — 로컬에만 저장됨','error');
+    showToast('전송 실패', 'error');
   }
+
+  // Refresh shared counts
+  await fetchCounts();
 
   const tasksWithType = checked.map(c => ({ name:c.dataset.task, type:c.dataset.type }));
   sessionLogs.unshift({ ...payload, tasksWithType });
-  renderCountDashboard();
   renderHistory();
 
   // Reset
@@ -439,15 +443,7 @@ function showToast(msg, type='') {
   toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
 }
 
-// ───────────────────────────────────────────
-// RESET COUNTS (누적횟수 초기화 — 브라우저 콘솔에서 resetCounts() 실행)
-// ───────────────────────────────────────────
-function resetCounts() {
-  if (!confirm('모든 장소의 누적 횟수를 초기화하시겠습니까?')) return;
-  localStorage.removeItem('cgi_counts');
-  renderCountDashboard();
-  showToast('🔄 누적 횟수가 초기화되었습니다','');
-}
+// 누적횟수 초기화는 Google Sheets "Counts" 탭에서 직접 수행
 </script>
 </body>
 </html>
