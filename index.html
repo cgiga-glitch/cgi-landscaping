@@ -240,14 +240,14 @@ let sharedCounts = {}; // { 'loc_0': { 'lawn_mowing': 12, ... }, ... }
 
 async function fetchCounts() {
   try {
-    const res = await fetch(SHEET_URL + '?action=counts', {
+    const res = await fetch(SHEET_URL + '?action=counts&t=' + Date.now(), {
       method: 'GET',
       mode: 'cors',
+      cache: 'no-store',
     });
     const data = await res.json();
     sharedCounts = (data && data.counts) ? data.counts : {};
   } catch {
-    // JSONP fallback for browsers blocking cors
     await fetchCountsJSONP();
     return;
   }
